@@ -1,0 +1,74 @@
+import scrapy
+import re
+import csv
+import nltk
+from nltk.corpus import stopwords
+from nltk.tokenize import word_tokenize
+from nltk.sentiment import SentimentIntensityAnalyzer
+from collections import Counter
+
+nltk.download('punkt')
+nltk.download('stopwords')
+nltk.download('vader_lexicon')
+
+class MultiWebsiteSpider(scrapy.Spider):
+    name = "multi_website"
+    
+    start_urls = [ 
+
+        
+        # Add more website URLs here
+    ]
+
+    links_followed = 0
+    word_frequencies = Counter()
+
+    sentiment_analyzer = SentimentIntensityAnalyzer()
+
+    def start_requests(self):
+        for url in self.start_urls:
+            yield scrapy.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+
+    def parse(self, response):
+
+        paragraphs = response.css('p::text').getall()
+        text = ' '.join(paragraphs).strip()
+
+        title_text = response.css('title::text').get()
+        if title_text:
+            text += ' ' + title_text.strip()
+
+        text = text.lower()
+        text = re.sub(r'[^a-zA-Z\s]', '', text) 
+        tokens = word_tokenize(text)
+        stop_words = set(stopwords.words('english'))
+        filtered_tokens = [word for word in tokens if word not in stop_words]
+        filtered_text = ' '.join(filtered_tokens)
+
+        words = filtered_text.split()
+        self.word_frequencies.update(words)
+
+        sentiment_score = self.sentiment_analyzer.polarity_scores(filtered_text)
+        sentiment = sentiment_score['compound']  
+        yield {
+            'website': response.url,
+            'text': filtered_text,
+            'sentiment_score': sentiment  
+        }
+
+        for link in response.css('a::attr(href)').getall():
+            if link.startswith('/') or any(website in link for website in self.start_urls):
+                if self.links_followed < 200:
+                    self.links_followed += 1
+                    yield response.follow(link, self.parse)
+
+    def closed(self, reason):
+        
+        with open('multi_website_word_frequencies_sentiment.csv', 'w', newline='', encoding='utf-8') as csvfile:
+            fieldnames = ['website', 'word', 'frequency', 'sentiment_score']
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            writer.writeheader()
+            for word, freq in self.word_frequencies.items():
+                sentiment_score = self.sentiment_analyzer.polarity_scores(word)
+                sentiment = sentiment_score['compound']
+                writer.writerow({'website': '', 'word': word, 'frequency': freq, 'sentiment_score': sentiment})
