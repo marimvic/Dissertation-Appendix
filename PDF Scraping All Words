@@ -1,0 +1,68 @@
+import scrapy
+import csv
+import nltk
+import fitz  
+from nltk.corpus import stopwords
+from nltk.tokenize import word_tokenize
+from nltk.sentiment import SentimentIntensityAnalyzer
+from collections import Counter
+import os
+
+pdf_folder = r"C:\Users..."  # Replace with the correct path to the PDF folder
+
+nltk.download('punkt')
+nltk.download('stopwords')
+nltk.download('vader_lexicon')
+
+class PdfArticleSpider(scrapy.Spider):
+    name = "pdf_article"
+
+    pdf_files = [os.path.join(pdf_folder, filename) for filename in os.listdir(pdf_folder) if filename.endswith(".pdf")]
+
+    links_followed = 0
+    word_frequencies = Counter()
+
+    sentiment_analyzer = SentimentIntensityAnalyzer()
+
+    def start_requests(self):
+        for pdf_file in self.pdf_files:
+           
+            pdf_text = self.extract_text_from_pdf(pdf_file)
+            yield {'pdf_file': pdf_file, 'text': pdf_text, 'sentiment_score': 0.0}  
+
+    def extract_text_from_pdf(self, pdf_file_path):
+        pdf_text = ''
+        try:
+            doc = fitz.open(pdf_file_path)
+            for page_num in range(len(doc)):
+                page = doc.load_page(page_num)
+                pdf_text += page.get_text()
+            doc.close()
+        except Exception as e:
+            self.logger.error(f"Error extracting text from {pdf_file_path}: {str(e)}")
+        return pdf_text
+
+    def parse(self, response):
+        
+        pdf_file = response.get('pdf_file', '')
+        pdf_text = response.get('text', '')
+
+        words = pdf_text.split()
+        self.word_frequencies.update(words)
+
+        sentiment = 0.0
+
+        yield {
+            'pdf_file': pdf_file,
+            'text': pdf_text,
+            'sentiment_score': sentiment  
+        }
+
+    def closed(self, reason):
+        
+        with open('pdf_articles_word_frequencies_sentiment.csv', 'w', newline='', encoding='utf-8') as csvfile:
+            fieldnames = ['pdf_file', 'word', 'frequency', 'sentiment_score']
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            writer.writeheader()
+            for word, freq in self.word_frequencies.items():
+                writer.writerow({'pdf_file': '', 'word': word, 'frequency': freq, 'sentiment_score': 0.0})  
