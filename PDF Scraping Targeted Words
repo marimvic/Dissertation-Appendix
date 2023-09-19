@@ -1,0 +1,45 @@
+import os
+import fitz 
+import pandas as pd
+from nltk.sentiment.vader import SentimentIntensityAnalyzer
+from collections import Counter
+
+sid = SentimentIntensityAnalyzer()
+
+main_folder = r"C:\Users\..." # Replace with the folder
+
+target_words = ["...", "...", "..."]  # Replace with the target words
+
+results = []
+
+def extract_text_from_pdf(pdf_path):
+    text = ''
+    pdf_document = fitz.open(pdf_path)
+    for page_num in range(len(pdf_document)):
+        page = pdf_document.load_page(page_num)
+        text += page.get_text()
+    return text
+
+def analyze_sentiment(text):
+    sentiment_scores = sid.polarity_scores(text)
+    return sentiment_scores['compound']
+
+for root, dirs, files in os.walk(main_folder):
+    for file in files:
+        if file.endswith('.pdf'):
+            pdf_path = os.path.join(root, file)
+            text = extract_text_from_pdf(pdf_path)
+            
+            word_counts = Counter(text.lower().split())
+            word_frequency = {word: word_counts.get(word, 0) for word in target_words}
+            
+            sentiment_score = analyze_sentiment(text)
+            
+            results.append({'File': file, 'Sentiment_Score': sentiment_score, **word_frequency})
+
+df = pd.DataFrame(results)
+
+csv_file = 'plymouth.csv'
+df.to_csv(csv_file, index=False)
+
+print(f'Results saved to {csv_file}')
